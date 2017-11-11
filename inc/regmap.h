@@ -4,6 +4,7 @@
 #include <fstream>
 #include <vector>
 #include <regex>
+#include <list>
 #include "tracers.h"
 #include "exc.h"
 
@@ -27,6 +28,39 @@ struct regmapExc_c : public exc_c
 
 private:
 	static std::string strErrorMessages[];
+};
+
+/**
+ * Дескриптор группы регистров
+ * nodeName - имя каталога
+ * regs - список файлов каталога
+ */
+struct regentry_c
+{
+	using reg_t = std::pair<std::string, std::uint32_t>;
+
+	std::string nodeName;
+	std::list<reg_t> regs;
+};
+
+/**
+ * Функтор для определения факта наличия узла в указанном списке
+ */
+struct IsExistIn : public std::unary_function
+{
+	IsExistIn(const std::list<regentry_c> &entries) : m_entries(entries) {};
+
+	inline bool operator ()(const std::string &nodeName)
+	{
+		for (auto e : m_entries) {
+			if (e.nodeName == nodeName)
+				return true;
+		}
+		return false;
+	}
+
+private:
+	const std::list<regentry_c> &m_entries;
 };
 
 /**
