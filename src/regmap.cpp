@@ -1,4 +1,5 @@
 #include "regmap.h"
+#include <iomanip>
 
 std::string regmapExc_c::strErrorMessages[] = {
 		"can't open file",
@@ -50,7 +51,7 @@ size_t regmap_c::Parse() throw (regmapExc_c)
 
 		if (strBlock.length() > 0)
 		{
-			std::cout << strBlock << std::endl;
+			// std::cout << strBlock << std::endl;
 
 			// валидация строки описания регистра
 			if (std::regex_match(strBlock.begin(), strBlock.end(), m_rxValidator))
@@ -130,20 +131,30 @@ std::size_t regcreator_c::DoEntries(const regmap_c::regmap_t &regmap) noexcept
 			nodeName = "common";
 			regName = reg.first;
 		}
+//		std::cout << nodeName << ":" << regName << std::endl;
 
-		if ( (it = std::find_if(entries.begin(), entries.end(), IsExistIn(entries))) != entries.end() )
+
+		if ( (it = std::find_if<It, IsExist>(entries.begin(), entries.end(), IsExist(nodeName))) != entries.end() )
 		{
-			// найден новый узел, добавляем в список
+			// узел уже существует, добавляем регистр
+			(*it).regs.emplace_back(regName, reg.second);
+		} else if (entries.size() == 0) {
+			// ещё нет ни одного узла, создаем
 			oss << "find new node: " << nodeName;
 			TRACE(oss);
 			entries.emplace_back(nodeName, regentry_c::reg_t(regName, reg.second));
 		} else {
-			// узел уже существует, добавляем регистр
-			(*it).regs.emplace_back(regName, reg.second);
+			// найден новый узел, добавляем в список
+			oss << "find new node: " << nodeName;
+			TRACE(oss);
+			entries.emplace_back(nodeName, regentry_c::reg_t(regName, reg.second));
 		}
-		oss << "register \"" << regName << "\" added to node\"" << nodeName << "\"";
+		oss << "register \"" << std::setw(16) << regName << "\" added to node \"" << std::setw(16) << nodeName << "\"";
 		TRACE(oss);
 	}
+
+	oss << "total nodes: " << entries.size();
+	TRACE(oss);
 	return entries.size();
 }
 

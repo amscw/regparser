@@ -82,21 +82,17 @@ struct regentry_c
 /**
  * Функтор для определения факта наличия узла в указанном списке
  */
-struct IsExistIn : public std::unary_function<regentry_c, bool>
+struct IsExist : public std::unary_function<regentry_c, bool>
 {
-	IsExistIn(const std::list<regentry_c> &entries) : m_entries(entries) {};
+	IsExist(const std::string &nextNodeName) : m_nextNodeName(nextNodeName) {};
 
-	inline bool operator ()(const regentry_c &regentry)
+	bool operator ()(const regentry_c &regentry) const
 	{
-		for (auto e : m_entries) {
-			if (e.nodeName == regentry.nodeName)
-				return true;
-		}
-		return false;
+		return m_nextNodeName == regentry.nodeName;
 	}
 
 private:
-	const std::list<regentry_c> &m_entries;
+	const std::string &m_nextNodeName;
 };
 
 /**
