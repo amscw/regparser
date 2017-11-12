@@ -113,4 +113,38 @@ void regmap_c::ToStdout() throw (regmapExc_c)
 }
 
 
+std::size_t regcreator_c::DoEntries(const regmap_c::regmap_t &regmap) noexcept
+{
+	std::ostringstream oss;
+	std::string regName, nodeName;
+	std::string::size_type pos;
+	It it;
+
+	for (auto reg : regmap)
+	{
+		if ((pos = reg.first.find('_')) != std::string::npos && pos != 0)
+		{
+			nodeName = reg.first.substr(0, pos);
+			regName = reg.first.substr(pos + 1);
+		} else {
+			nodeName = "common";
+			regName = reg.first;
+		}
+
+		if ( (it = std::find_if(entries.begin(), entries.end(), IsExistIn(entries))) != entries.end() )
+		{
+			// найден новый узел, добавляем в список
+			oss << "find new node: " << nodeName;
+			TRACE(oss);
+			entries.emplace_back(nodeName, regentry_c::reg_t(regName, reg.second));
+		} else {
+			// узел уже существует, добавляем регистр
+			(*it).regs.emplace_back(regName, reg.second);
+		}
+		oss << "register \"" << regName << "\" added to node\"" << nodeName << "\"";
+		TRACE(oss);
+	}
+	return entries.size();
+}
+
 

@@ -31,49 +31,18 @@ private:
 };
 
 /**
- * Дескриптор группы регистров
- * nodeName - имя каталога
- * regs - список файлов каталога
- */
-struct regentry_c
-{
-	using reg_t = std::pair<std::string, std::uint32_t>;
-
-	std::string nodeName;
-	std::list<reg_t> regs;
-};
-
-/**
- * Функтор для определения факта наличия узла в указанном списке
- */
-struct IsExistIn : public std::unary_function
-{
-	IsExistIn(const std::list<regentry_c> &entries) : m_entries(entries) {};
-
-	inline bool operator ()(const std::string &nodeName)
-	{
-		for (auto e : m_entries) {
-			if (e.nodeName == nodeName)
-				return true;
-		}
-		return false;
-	}
-
-private:
-	const std::list<regentry_c> &m_entries;
-};
-
-/**
  * Варианты хранения регистровой карты
  * 1 последовательный контейнер - вектор пар строка-адрес
  * 2 ассоциативный контейнер - словарь, индексируемый именем регистра
  */
 class regmap_c
 {
+public:
 	using regentry_t = std::pair<std::string, std::uint32_t>;
 	using regmap_t = std::vector<regentry_t>;
 	using regit_t = regmap_t::iterator;
 
+private:
 	const char DELIMETER_TOKEN = ';';
 
 	regmap_t regmap;
@@ -88,8 +57,61 @@ public:
 	size_t Parse() throw (regmapExc_c);
 	void ToStdout() throw (regmapExc_c);
 
-private:
-
+	inline const regmap_t &GetRegs() const noexcept { return regmap; }
 };
 
+/**
+ * Дескриптор группы регистров
+ * nodeName - имя каталога
+ * regs - список файлов каталога
+ */
+struct regentry_c
+{
+	using reg_t = std::pair<std::string, std::uint32_t>;
+
+	std::string nodeName;
+	std::list<reg_t> regs;
+
+	regentry_c(){};
+	regentry_c(const std::string &name, reg_t firstReg) : nodeName(name)
+	{
+		regs.emplace_back(firstReg);
+	}
+};
+
+/**
+ * Функтор для определения факта наличия узла в указанном списке
+ */
+struct IsExistIn : public std::unary_function<regentry_c, bool>
+{
+	IsExistIn(const std::list<regentry_c> &entries) : m_entries(entries) {};
+
+	inline bool operator ()(const regentry_c &regentry)
+	{
+		for (auto e : m_entries) {
+			if (e.nodeName == regentry.nodeName)
+				return true;
+		}
+		return false;
+	}
+
+private:
+	const std::list<regentry_c> &m_entries;
+};
+
+/**
+ * Группирует регистры по узлам (каталогам), указанным в префиксной части имени
+ * Далее взаимодействует с драйвером для создания модели устройства
+ */
+class regcreator_c
+{
+	using It = std::list<regentry_c>::iterator;
+
+	int fd;
+	std::list<regentry_c> entries;
+
+public:
+	std::size_t DoEntries(const regmap_c::regmap_t &regmap) noexcept;
+	void MakeDeviceRegs(const std::string &deviceName); // throw (regcreatorExc_c)
+};
 #endif // REGMAP_H
