@@ -31,17 +31,25 @@ int main(int argc, char **argv) {
 		TRACE(oss);
 		// regmap->ToStdout();
 
+		oss << "\"" << argv[1] << "\"" << " successfully parsed";
+		TRACE(oss);
+
 		// группировка регистров по узлам
 		regcreator = std::make_unique<regcreator_c>();
-		regcreator->DoEntries(regmap->GetRegs());
+		if (regcreator->DoEntries(regmap->GetRegs()) > 0)
+		{
+			regcreator->MakeDeviceRegs("/dev/mfhss0");
+		}
 
 	} catch (regmapExc_c &exc) {
 		exc.ToStderr();
 		return -1;
+	} catch (regcreatorExc_c &exc) {
+		exc.ToStderr();
+		return -2;
 	}
 
-	oss << "\"" << argv[1] << "\"" << " successfully parsed";
+	oss << "device registers created successfully";
 	TRACE(oss);
-
 	return 0;
 }

@@ -95,6 +95,29 @@ private:
 	const std::string &m_nextNodeName;
 };
 
+
+struct regcreatorExc_c : public exc_c
+{
+	enum class errCode_t : std::uint32_t {
+		ERROR_OPENDEVICE,
+		ERROR_MAKEGROUP,
+		ERROR_MAKEREG
+	} m_errCode;
+
+	regcreatorExc_c(enum errCode_t code, const std::string &strFile, const std::string &strFunction, const std::string &strErrorDescription = "") noexcept :
+			exc_c(strFile, strFunction, strErrorDescription), m_errCode(code)
+	{}
+
+	const std::string &Msg() const noexcept override { return strErrorMessages[(int)m_errCode]; }
+	void ToStderr() const noexcept override
+	{
+		std::cerr << "WTF:" << m_strFile << "(" << m_strFunction << "):" << strErrorMessages[(int)m_errCode] << "-" << m_strErrorDescription << std::endl;
+	}
+
+private:
+	static std::string strErrorMessages[];
+};
+
 /**
  * Группирует регистры по узлам (каталогам), указанным в префиксной части имени
  * Далее взаимодействует с драйвером для создания модели устройства
@@ -108,6 +131,6 @@ class regcreator_c
 
 public:
 	std::size_t DoEntries(const regmap_c::regmap_t &regmap) noexcept;
-	void MakeDeviceRegs(const std::string &deviceName); // throw (regcreatorExc_c)
+	void MakeDeviceRegs(const std::string &deviceName) throw (regcreatorExc_c);
 };
 #endif // REGMAP_H

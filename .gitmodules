@@ -1,0 +1,3 @@
+[submodule "mfhssdrv"]
+	path = mfhssdrv
+	url = https://github.com/amscw/mfhssdrv.git

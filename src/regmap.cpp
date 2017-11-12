@@ -1,10 +1,20 @@
 #include "regmap.h"
 #include <iomanip>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "mfhssdrv_ioctl.h"
 
 std::string regmapExc_c::strErrorMessages[] = {
 		"can't open file",
 		"parse error",
 		"regmap is empty"
+};
+
+std::string regcreatorExc_c::strErrorMessages[] = {
+		"can't open device",
+		"make group error",
+		"make register error"
 };
 
 /**
@@ -158,4 +168,26 @@ std::size_t regcreator_c::DoEntries(const regmap_c::regmap_t &regmap) noexcept
 	return entries.size();
 }
 
+void regcreator_c::MakeDeviceRegs(const std::string &deviceName) throw (regcreatorExc_c)
+{
+	int res;
 
+	fd = open(deviceName.c_str(), O_RDWR);
+	if (fd == -1)
+		throw regcreatorExc_c(regcreatorExc_c::errCode_t::ERROR_OPENDEVICE, __FILE__, __FUNCTION__, deviceName);
+
+	for (auto e : entries)
+	{
+		MFHSS_GROUP_TypeDef groupDescr = {0};
+
+		e.nodeName.copy(groupDescr.nodeName, e.nodeName.size());
+		res = ioctl(fd, MFHSSDRV_IOMAKEGROUP, &groupDescr);
+		if (res != 0)
+		{
+			close(fd);
+			throw regcreatorExc_c(regcreatorExc_c::errCode_t::ERROR_MAKEGROUP, __FILE__, __FUNCTION__, e.nodeName);
+		}
+	}
+
+	close(fd);
+}
