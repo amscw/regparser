@@ -22,11 +22,9 @@ std::string regcreatorExc_c::strErrorMessages[] = {
  */
 regmap_c::regmap_c(const std::string &filename) throw (regmapExc_c) : m_in(filename, std::ifstream::binary),
 	m_rxComment("[ \t]*--[^\n]*(\n|$)"),
-	m_rxValidator("^[ \t]*constant[ \t]+ADDR_REG_[A-Z0-9_]+[ \t]*:[ \t]*std_logic_vector[ \t]"
-			"*\\([ \t]*OPT_MEM_ADDR_BITS[ \t]+downto[ \t]+0[ \t]*\\)[ \t]*:=[ \t]*x\"[0-9a-fA-F]+\"[\r\n\t\v]*$"),
+	m_rxValidator("^[ \t]*constant[ \t]+ADDR_REG_[A-Z0-9_]+[ \t]*:[ \t]*integer[ \t]*:=[ \t]*[0-9]+[\r\n\t\v]*$"),
 	m_rxRegName("ADDR_REG_[A-Z0-9_]+"),
-	m_rxRegNamePrefix("ADDR_REG_"),
-	m_rxRegAddr("x\"[0-9a-fA-F]+\"")
+	m_rxRegNamePrefix("ADDR_REG_")
 {
 	if (!m_in.good())
 		throw regmapExc_c(regmapExc_c::errCode_t::ERROR_OPENFILE, __FILE__, __FUNCTION__, filename);
@@ -40,7 +38,7 @@ regmap_c::~regmap_c() noexcept
 size_t regmap_c::Parse() throw (regmapExc_c)
 {
 	std::ostringstream ossBlock, oss;
-	std::string strBlock, str, strRegName, strRegAddr;
+	std::string strBlock, str, strRegName/*, strRegAddr*/;
 	std::smatch match;
 	std::uint32_t nRegAddr;
 
@@ -79,13 +77,10 @@ size_t regmap_c::Parse() throw (regmapExc_c)
 				}
 
 				// ищем адрес регистра
-				if (std::regex_search(strBlock, match, m_rxRegAddr))
+				if (std::regex_search(strBlock, match, std::regex("[0-9]+")))
 				{
-					// удалить кавычки и добавить '0'
 					str = match.str();
-					strRegAddr = "0";
-					std::regex_replace(std::back_inserter(strRegAddr), str.begin(), str.end(), std::regex("\""), "");
-					nRegAddr = std::stoul(strRegAddr, nullptr, 16);
+					nRegAddr = std::stoul(str, nullptr, 10) * 4;
 				} else {
 					throw (regmapExc_c(regmapExc_c::errCode_t::ERROR_PARSE, __FILE__, __FUNCTION__, strBlock));
 				}
@@ -186,6 +181,19 @@ void regcreator_c::MakeDeviceRegs(const std::string &deviceName) throw (regcreat
 		{
 			close(fd);
 			throw regcreatorExc_c(regcreatorExc_c::errCode_t::ERROR_MAKEGROUP, __FILE__, __FUNCTION__, e.nodeName);
+		}
+		for (auto r : e.regs)
+		{
+			MFHSS_REG_TypeDef regDescr = {0};
+			e.nodeName.copy(regDescr.targetNode, e.nodeName.size());
+			r.first.copy(regDescr.regName, r.first.size());
+			regDescr.address = r.second;
+			res = ioctl(fd, MFHSSDRV_IOMAKEREG, &regDescr);
+			if (res != 0)
+			{
+				close(fd);
+				throw regcreatorExc_c(regcreatorExc_c::errCode_t::ERROR_MAKEREG, __FILE__, __FUNCTION__, r.first);
+			}
 		}
 	}
 

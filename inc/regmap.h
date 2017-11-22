@@ -48,7 +48,7 @@ private:
 	regmap_t regmap;
 	std::ifstream m_in;
 
-	std::regex m_rxComment, m_rxValidator, m_rxRegName, m_rxRegNamePrefix, m_rxRegAddr;
+	std::regex m_rxComment, m_rxValidator, m_rxRegName, m_rxRegNamePrefix;
 
 public:
 	regmap_c (const std::string &filename) throw (regmapExc_c);
