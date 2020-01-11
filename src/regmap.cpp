@@ -1,4 +1,17 @@
 #include "regmap.h"
+#include <iomanip>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+#include "mfhssioctl.h"
+
+#if defined(DRV_TYPE_NET)
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#endif
 
 std::string regmapExc_c::strErrorMessages[] = {
 		"can't open file",
@@ -6,16 +19,20 @@ std::string regmapExc_c::strErrorMessages[] = {
 		"regmap is empty"
 };
 
+std::string regcreatorExc_c::strErrorMessages[] = {
+		"can't open device",
+		"make group error",
+		"make register error"
+};
+
 /**
  * экранирование выполнять двойным слешем "\\"
  */
 regmap_c::regmap_c(const std::string &filename) throw (regmapExc_c) : m_in(filename, std::ifstream::binary),
 	m_rxComment("[ \t]*--[^\n]*(\n|$)"),
-	m_rxValidator("^[ \t]*constant[ \t]+ADDR_REG_[A-Z0-9_]+[ \t]*:[ \t]*std_logic_vector[ \t]"
-			"*\\([ \t]*OPT_MEM_ADDR_BITS[ \t]+downto[ \t]+0[ \t]*\\)[ \t]*:=[ \t]*x\"[0-9a-fA-F]+\"[\r\n\t\v]*$"),
+	m_rxValidator("^[ \t]*constant[ \t]+ADDR_REG_[A-Z0-9_]+[ \t]*:[ \t]*integer[ \t]*:=[ \t]*[0-9]+[\r\n\t\v]*$"),
 	m_rxRegName("ADDR_REG_[A-Z0-9_]+"),
-	m_rxRegNamePrefix("ADDR_REG_"),
-	m_rxRegAddr("x\"[0-9a-fA-F]+\"")
+	m_rxRegNamePrefix("ADDR_REG_")
 {
 	if (!m_in.good())
 		throw regmapExc_c(regmapExc_c::errCode_t::ERROR_OPENFILE, __FILE__, __FUNCTION__, filename);
@@ -29,7 +46,7 @@ regmap_c::~regmap_c() noexcept
 size_t regmap_c::Parse() throw (regmapExc_c)
 {
 	std::ostringstream ossBlock, oss;
-	std::string strBlock, str, strRegName, strRegAddr;
+	std::string strBlock, str, strRegName/*, strRegAddr*/;
 	std::smatch match;
 	std::uint32_t nRegAddr;
 
@@ -50,7 +67,7 @@ size_t regmap_c::Parse() throw (regmapExc_c)
 
 		if (strBlock.length() > 0)
 		{
-			std::cout << strBlock << std::endl;
+			// std::cout << strBlock << std::endl;
 
 			// валидация строки описания регистра
 			if (std::regex_match(strBlock.begin(), strBlock.end(), m_rxValidator))
@@ -68,13 +85,10 @@ size_t regmap_c::Parse() throw (regmapExc_c)
 				}
 
 				// ищем адрес регистра
-				if (std::regex_search(strBlock, match, m_rxRegAddr))
+				if (std::regex_search(strBlock, match, std::regex("[0-9]+")))
 				{
-					// удалить кавычки и добавить '0'
 					str = match.str();
-					strRegAddr = "0";
-					std::regex_replace(std::back_inserter(strRegAddr), str.begin(), str.end(), std::regex("\""), "");
-					nRegAddr = std::stoul(strRegAddr, nullptr, 16);
+					nRegAddr = std::stoul(str, nullptr, 10) * 4;
 				} else {
 					throw (regmapExc_c(regmapExc_c::errCode_t::ERROR_PARSE, __FILE__, __FUNCTION__, strBlock));
 				}
@@ -113,4 +127,98 @@ void regmap_c::ToStdout() throw (regmapExc_c)
 }
 
 
+std::size_t regcreator_c::DoEntries(const regmap_c::regmap_t &regmap) noexcept
+{
+	std::ostringstream oss;
+	std::string regName, nodeName;
+	std::string::size_type pos;
+	It it;
 
+	for (auto reg : regmap)
+	{
+		if ((pos = reg.first.find('_')) != std::string::npos && pos != 0)
+		{
+			nodeName = reg.first.substr(0, pos);
+			regName = reg.first.substr(pos + 1);
+		} else {
+			nodeName = "common";
+			regName = reg.first;
+		}
+//		std::cout << nodeName << ":" << regName << std::endl;
+
+
+		if ( (it = std::find_if<It, IsExist>(entries.begin(), entries.end(), IsExist(nodeName))) != entries.end() )
+		{
+			// узел уже существует, добавляем регистр
+			(*it).regs.emplace_back(regName, reg.second);
+		} else if (entries.size() == 0) {
+			// ещё нет ни одного узла, создаем
+			oss << "find new node: " << nodeName;
+			TRACE(oss);
+			entries.emplace_back(nodeName, regentry_c::reg_t(regName, reg.second));
+		} else {
+			// найден новый узел, добавляем в список
+			oss << "find new node: " << nodeName;
+			TRACE(oss);
+			entries.emplace_back(nodeName, regentry_c::reg_t(regName, reg.second));
+		}
+		oss << "register \"" << std::setw(16) << regName << "\" added to node \"" << std::setw(16) << nodeName << "\"";
+		TRACE(oss);
+	}
+
+	oss << "total nodes: " << entries.size();
+	TRACE(oss);
+	return entries.size();
+}
+
+void regcreator_c::MakeDeviceRegs(const std::string &deviceName) throw (regcreatorExc_c)
+{
+	int res;
+#if defined(DRV_TYPE_CHAR)
+	fd = open(deviceName.c_str(), O_RDWR);
+#elif defined(DRV_TYPE_NET)
+	struct ifreq ifr;
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	std::memcpy(ifr.ifr_name, deviceName.c_str(), deviceName.length());
+#endif
+	if (fd == -1)
+		throw regcreatorExc_c(regcreatorExc_c::errCode_t::ERROR_OPENDEVICE, __FILE__, __FUNCTION__, deviceName);
+
+	for (auto e : entries)
+	{
+		MFHSS_DIR_TypeDef groupDescr = {0};
+
+		e.nodeName.copy(groupDescr.nodeName, e.nodeName.size());
+#if defined(DRV_TYPE_CHAR)
+		res = ioctl(fd, MFHSS_IOMAKEDIR, &groupDescr);
+#elif defined(DRV_TYPE_NET)
+		std::memcpy(&ifr.ifr_data, &groupDescr, sizeof groupDescr);
+		res = ioctl(fd, MFHSS_IOMAKEDIR, &ifr);
+#endif
+		if (res != 0)
+		{
+			close(fd);
+			throw regcreatorExc_c(regcreatorExc_c::errCode_t::ERROR_MAKEGROUP, __FILE__, __FUNCTION__, e.nodeName);
+		}
+		for (auto r : e.regs)
+		{
+			MFHSS_FILE_TypeDef regDescr = {0};
+			e.nodeName.copy(regDescr.targetNode, e.nodeName.size());
+			r.first.copy(regDescr.regName, r.first.size());
+			regDescr.address = r.second;
+#if defined(DRV_TYPE_CHAR)
+			res = ioctl(fd, MFHSS_IOMAKEFILE, &regDescr);
+#elif defined(DRV_TYPE_NET)
+			std::memcpy(&ifr.ifr_data, &regDescr, sizeof regDescr);
+			res = ioctl(fd, MFHSS_IOMAKEFILE, &ifr);
+#endif
+			if (res != 0)
+			{
+				close(fd);
+				throw regcreatorExc_c(regcreatorExc_c::errCode_t::ERROR_MAKEREG, __FILE__, __FUNCTION__, r.first);
+			}
+		}
+	}
+
+	close(fd);
+}
